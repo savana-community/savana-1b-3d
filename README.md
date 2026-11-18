@@ -3,7 +3,7 @@
 An interactive 3D model of the Adarsh Savana (Bettahalli, Bangalore) Phase 1B layout, traced from the
 published master plan. It runs entirely in the browser, with no build step.
 
-**View it:** open `index.html` in a browser (it needs internet access for the Three.js CDN), or use the GitHub Pages link for this repo.
+**View it:** open `index.html` in a browser (it needs internet access for the Three.js CDN), or use the hosted version at https://savana-community.github.io/savana-1b-3d/
 
 ## What's in the model
 - About 1,230 plots with straight-edged boundaries traced from the drawing's divider lines, plot numbers
