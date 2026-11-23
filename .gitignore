@@ -1,8 +1,7 @@
-# derived / large intermediates (regenerate with the tools)
+# old brochure-model leftovers (kept locally only)
 data/classified.npy
 data/plan-crop.png
 source/master-plan-1b-enh.png
-# obsolete v1 pipeline
 tools/classify.py
 tools/vectorize.py
 tools/segment_1b.py

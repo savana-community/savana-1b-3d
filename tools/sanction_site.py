@@ -1,7 +1,7 @@
 """Convert the sanction-plan extraction (scan pixels) into the viewer's site format (metres, north up).
 
 Inputs: data/sanction-2021/{plots-geo.json, sanction.json, regions-geo.json (optional)}
-Output: data/sanction-2021/site.json and data/sanction-2021/viewer/site-data.js
+Output: data/sanction-2021/site.json and site-data.js (read by index.html)
 """
 import json, base64, io
 import numpy as np
@@ -104,7 +104,6 @@ json.dump(site, open(D / 'site.json', 'w'))
 im = Image.open('source/sanction-2021/scan.jpg').convert('RGB').crop((X0, Y0, X1, Y1))
 im = im.resize((W // 2, H // 2), Image.LANCZOS)
 buf = io.BytesIO(); im.save(buf, 'JPEG', quality=80)
-(D / 'viewer').mkdir(exist_ok=True)
-(D / 'viewer' / 'site-data.js').write_text('window.SITE = ' + json.dumps(site, separators=(',', ':')) + ';\nwindow.PLAN_IMAGE = "data:image/jpeg;base64,'
+Path('site-data.js').write_text('window.SITE = ' + json.dumps(site, separators=(',', ':')) + ';\nwindow.PLAN_IMAGE = "data:image/jpeg;base64,'
                                           + base64.b64encode(buf.getvalue()).decode() + '";\n')
 print('plots', len(plots), 'regions', len(regions))

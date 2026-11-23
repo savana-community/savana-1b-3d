@@ -50,6 +50,7 @@
     #menuClose{ display:block; position:sticky; top:0; float:right; background:none; border:none; font-size:22px; line-height:1; padding:0 2px; color:var(--mute); cursor:pointer; }
   }
   @media (max-width:640px){ #info{ top:auto; bottom:12px; right:12px; left:12px; width:auto; max-height:40%; } }
+  .lbl.roadno { background:#c62828; color:#fff; font:700 11px system-ui; padding:1px 5px; border-radius:8px; }
 </style>
 </head>
 <body>
@@ -59,8 +60,8 @@
 <button id="menuBtn" aria-label="Open menu">☰ Menu</button>
 <div id="panel">
   <button id="menuClose" aria-label="Close menu">×</button>
-  <h1>Savana Phase 1B · 3D</h1>
-  <p class="note">Traced from the master plan PDF. Plots follow the drawing's divider lines. Plot boundaries are always shown; colouring by size class is an optional overlay (sold status is ignored). The area south of Central Avenue is excluded.</p>
+  <h1>Savana · 3D (sanction plan)</h1>
+  <p class="note">Built from the 2021 revised sanction plan (1:1750). Plot numbers, sizes and areas from the plan's tables; roads, parks and civic areas traced from the drawing.</p>
 
   <h2>View</h2>
   <div class="btns">
@@ -96,8 +97,6 @@
     <button id="btnJson">Download data .json</button>
   </div>
   <p class="note" style="margin-top:6px">.glb opens in Blender, SketchUp (with a plugin), Windows 3D Viewer and similar tools. Units are metres.</p>
-
-  <h2>Amenities</h2>
   <div id="parks"></div>
 </div>
 
@@ -132,17 +131,11 @@ const SITE_LAYERS = {
   park:     { name:'Parks & green',     color:0x4c9a2e, h:0.35 },
   open:     { name:'Civic amenities',   color:0xdfe5cf, h:0.25 },
   reserved: { name:'Non-Savana land',   color:0xf7f8f3, h:1.0 },
+  clubhouse:{ name:'Club house',        color:0x8a6bb0, h:0.6 },
   road:     { name:'Roads',             color:0x4a4c4f, h:0.12 },
   trees:    { name:'Trees',             color:0x3f7d3a },
 };
-const AMENITIES = {
-  'Park 3':['Children’s play area','Sand pit with climbing wall','Elders chit chat zone','Floral garden','Pet park','Multipurpose court','Sand volley ball'],
-  'Park 4':['Children’s play on lawn','Reflexology pathway','Elders chit chat zone'],
-  'Park 5':['Mini golf putting','Pavilion with seater below','Cricket pitch','Multipurpose court','Meditation zone','Multipurpose maidan','Sand volley ball','Skating rink','Overhead tank'],
-  'Park 7':['Children’s play area on lawn','Children’s play area on EPDM','Floral garden','Tree court – flowering trees','Swing park','Music and trampoline park','Shipwreck park','Seating gallery','Multipurpose lawn','Repose zone','Afforestation belt'],
-  'Park 8':['Unique tree court','Palm court','Rock garden','Zen garden','Afforestation belt','Maze garden','Butterfly garden','Fruit orchard','Community kitchen garden','Open air theatre','Giant chess, ludo, snake & ladder, hopscotch','Tennis court','Basketball court','Sand volleyball court'],
-  'Club House':['Multipurpose hall','Restaurant','Four indoor badminton courts','Gym and yoga','Health club','Pool table','Creche','Salon','Supermarket','Table tennis & indoor games','Swimming pool','Multipurpose gathering lawn','Kids play area'],
-};
+const AMENITIES = {};   // park amenity lists came from the brochure; park numbers differ on the sanction plan
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias:true });
@@ -188,8 +181,8 @@ const inset = (poly, d) => { const [cx,cy] = centroid(poly); return poly.map(([x
 const hex = c => '#' + c.toString(16).padStart(6,'0');
 
 const site = new THREE.Group(); site.name = 'Savana-1B'; scene.add(site);
-const slab = new THREE.Mesh(extrude(toShape(SITE.boundary), 0.1, -0.02), new THREE.MeshLambertMaterial({ color:0x4a4c4f }));
-slab.receiveShadow = true; slab.name = 'roads-asphalt';
+const slab = new THREE.Mesh(extrude(toShape(SITE.boundary), 0.1, -0.12), new THREE.MeshLambertMaterial({ color:0xa8a08c }));
+slab.receiveShadow = true; slab.name = 'site-ground';
 
 const groups = {};
 [...Object.keys(TYPES), ...Object.keys(SITE_LAYERS)].forEach(k => { const g = new THREE.Group(); g.name = k; groups[k] = g; site.add(g); });
@@ -207,6 +200,24 @@ const LAWN_MAT = (() => {
   const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1/8, 1/8); t.colorSpace = THREE.SRGBColorSpace;
   return new THREE.MeshLambertMaterial({ map:t });
 })();
+// ---------- road rectangles: one selectable mesh per road; 18 m roads darker, with a raised median ----------
+const ROAD_MAT = { 9: new THREE.MeshLambertMaterial({ color:0x7a7c80 }), 12: new THREE.MeshLambertMaterial({ color:0x63656a }),
+                   18: new THREE.MeshLambertMaterial({ color:0x2e3034 }) };
+const MEDIAN_MAT = new THREE.MeshLambertMaterial({ color:0xd8d4c4 });
+for (const r of (SITE.roadRects || [])) {
+  const mat = ROAD_MAT[r.width_m] || ROAD_MAT[12];
+  const top = r.width_m >= 18 ? 0.07 : r.width_m >= 12 ? 0.05 : 0.03;      // distinct heights: no z-fighting at junctions
+  const m = new THREE.Mesh(extrude(toShape(r.poly), top, 0), mat);
+  m.receiveShadow = true; m.name = r.id;
+  m.userData = { kind:'road', id:r.id, name:`${r.id} · ${r.name}`, width_m:r.width_m, length_m:r.length_m };
+  groups.road.add(m); pickables.push(m);
+  if (r.width_m >= 18) {            // 1 m wide, 15 cm kerbed median along the centre line
+    const [a, b] = r.centre, dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy), nx = -dy/L*0.5, ny = dx/L*0.5;
+    const med = [[a[0]+nx, a[1]+ny], [b[0]+nx, b[1]+ny], [b[0]-nx, b[1]-ny], [a[0]-nx, a[1]-ny]];
+    const mm = new THREE.Mesh(extrude(toShape(med), 0.2, 0.07), MEDIAN_MAT); mm.castShadow = mm.receiveShadow = true;
+    groups.road.add(mm);
+  }
+}
 for (const r of SITE.regions) {
   const L = SITE_LAYERS[r.layer]; if (!L || r.layer === 'road') continue;   // roads = the asphalt base
   const lawn = r.layer === 'park';
@@ -322,7 +333,7 @@ const streetGroup = new THREE.Group(); streetGroup.name = 'streetscape'; site.ad
       const dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy); if (L < 2) continue;
       const nx = dy/L, ny = -dx/L, m = [(a[0]+b[0])/2 + nx*2.5, (a[1]+b[1])/2 + ny*2.5];
       if (near(m).some(q => q !== p && pointInPoly(m, q.poly))) continue;          // shared with a neighbour
-      { const g = boxAlong(a, b, 1.3, 1.2, 0.1, BASE); if (g) path.push(g); }      // slim paver strip on every outer edge
+      if (!SITE.footpaths) { const g = boxAlong(a, b, 1.3, 1.2, 0.1, BASE); if (g) path.push(g); }   // per-edge strips (old data only)
       if (blockers.some(r => pointInPoly(m, r.outer))) continue;                    // faces a park / other land
       (extEdges.get(p.id) || extEdges.set(p.id, []).get(p.id)).push(i);
       const nt = Math.max(1, Math.round(L/9));                                       // evenly spaced avenue trees
@@ -337,7 +348,9 @@ const streetGroup = new THREE.Group(); streetGroup.name = 'streetscape'; site.ad
   }
   const hedgeMesh = new THREE.Mesh(mergeGeometries(hedge), new THREE.MeshLambertMaterial({ color:0x3f6b2a }));
   hedgeMesh.castShadow = hedgeMesh.receiveShadow = true; hedgeMesh.name = 'hedges';
-  const pathMesh = new THREE.Mesh(mergeGeometries(path), new THREE.MeshLambertMaterial({ color:0xd8b77c }));
+  // footpaths: one merged ring per block from the data (no overlapping strips, so no z-fighting)
+  for (const f of (SITE.footpaths || [])) path.push(extrude(toShape(f.outer, f.holes), 0.06, BASE));
+  const pathMesh = new THREE.Mesh(mergeGeometries(path), new THREE.MeshLambertMaterial({ color:0xd8b77c, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1 }));
   pathMesh.receiveShadow = true; pathMesh.name = 'footpaths';
   const pts = [...corners.values()];
   const stone = new THREE.InstancedMesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), new THREE.MeshLambertMaterial({ color:0xf2f0ea }), pts.length);
@@ -358,6 +371,7 @@ const wallGroup = new THREE.Group(); wallGroup.name = 'boundary-wall'; site.add(
     const L = Math.hypot(b[0]-a[0], b[1]-a[1]), n = Math.floor(L/3);      // pilasters every ~3 m
     for (let k = 0; k <= n; k++) { const t = n ? k/n : 0; posts.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); }
   }
+  if (!segs.length) return;
   const m = new THREE.Mesh(mergeGeometries(segs), new THREE.MeshLambertMaterial({ color:0xbdb8ad }));
   m.castShadow = m.receiveShadow = true; m.name = 'wall';
   const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, WALL_H + 0.1, 0.35), new THREE.MeshLambertMaterial({ color:0xb0aba0 }), posts.length);
@@ -599,7 +613,7 @@ function showRegion(u) {
 
 // ---------- labels (DOM, projected each frame) ----------
 const labelsEl = document.getElementById('labels');
-const lmEls = SITE.landmarks.map(l => {
+const lmEls = [...SITE.landmarks, ...(SITE.roadRects || []).map(r => ({ name:r.id, kind:'roadno', at:r.label_at }))].map(l => {
   const el = document.createElement('div'); el.className = `lbl ${l.kind}`; el.textContent = l.name; labelsEl.appendChild(el);
   return { el, v: new THREE.Vector3(l.at[0], l.kind === 'park' || l.kind === 'amenity' ? 8 : 1, -l.at[1]), kind:l.kind };
 });
@@ -675,8 +689,15 @@ renderer.domElement.addEventListener('pointerup', e => {
     const i = hit.object.geometry.attributes.plotIdx.getX(hit.face.a);
     const p = u.list[i];
     showPlot(plotList.find(r => r.plot === p));
-  } else showRegion(u);
+  } else if (u.kind === 'road') showRoad(u);
+  else showRegion(u);
 });
+function showRoad(u) {
+  hl.visible = false; info.style.display = 'block';
+  info.innerHTML = `<h1>${u.name}</h1><table>
+    <tr><td>Width</td><td>${u.width_m} m${u.width_m >= 18 ? ' (main road, with median)' : ''}</td></tr>
+    <tr><td>Length</td><td>${u.length_m} m</td></tr><tr><td>Id</td><td>${u.id}</td></tr></table>`;
+}
 
 document.getElementById('search').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
