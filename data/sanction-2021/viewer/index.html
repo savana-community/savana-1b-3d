@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Savana 3D Plan</title>
+<style>
+  :root { --bg:#f4f3ef; --panel:#ffffffee; --ink:#1d232b; --mute:#6b7280; --line:#e3e1da; --accent:#1f4e79; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font:13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; overflow:hidden; }
+  #view { position:fixed; inset:0; }
+  #panel { position:fixed; top:12px; left:12px; width:290px; max-height:calc(100% - 24px); overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; box-shadow:0 4px 18px #0001; z-index:2; }
+  h1 { font-size:15px; margin:0 0 2px; color:var(--accent); }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:14px 0 6px; }
+  .note { color:var(--mute); font-size:11px; margin:0; }
+  .row { display:flex; align-items:center; gap:8px; margin:3px 0; }
+  .sw { width:14px; height:14px; border-radius:3px; border:1px solid #0002; flex:none; }
+  .row label { flex:1; cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .tints { padding-left:14px; }
+  .tints.off { opacity:.45; pointer-events:none; }
+  #info button { margin-top:8px; }
+  .cnt { color:var(--mute); font-variant-numeric:tabular-nums; }
+  .btns { display:flex; flex-wrap:wrap; gap:6px; }
+  button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:6px; padding:5px 9px; cursor:pointer; color:var(--ink); }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  input[type=range] { width:100%; }
+  input[type=text] { font:inherit; width:100%; padding:5px 8px; border:1px solid var(--line); border-radius:6px; }
+  #info { position:fixed; right:12px; top:12px; width:270px; max-height:calc(100% - 24px); overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; display:none; box-shadow:0 4px 18px #0001; z-index:2; }
+  #info table { width:100%; border-collapse:collapse; }
+  #info td { padding:2px 0; vertical-align:top; } #info td:first-child { color:var(--mute); width:42%; }
+  #info ol { margin:4px 0 0; padding-left:20px; }
+  #hint { position:fixed; bottom:12px; left:50%; transform:translateX(-50%); background:#1d232bcc; color:#fff; padding:6px 12px; border-radius:20px; font-size:12px; pointer-events:none; z-index:2; }
+  details summary { cursor:pointer; font-weight:600; margin:4px 0; }
+  details ol { margin:2px 0 6px; padding-left:20px; color:#374151; }
+  #labels { position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:1; }
+  .lbl { position:absolute; transform:translate(-50%,-50%); white-space:nowrap; pointer-events:none; }
+  .lbl.park, .lbl.amenity { background:#1d232bd9; color:#fff; padding:2px 7px; border-radius:4px; font-size:12px; font-weight:600; }
+  .lbl.road { color:#1d232b; font-size:11px; font-weight:600; text-shadow:0 0 3px #fff, 0 0 3px #fff; letter-spacing:.04em; text-transform:uppercase; }
+  .lbl.street { color:#374151; font-size:10px; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
+  .lbl.num { color:#111; font-size:10px; font-weight:600; text-shadow:0 0 2px #fff, 0 0 2px #fff; }
+  .lbl.num.inf { color:#6b7280; font-style:italic; }
+  .lbl.measure { background:#d92d20; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px; transform:translate(-50%,-130%); }
+  #menuBtn, #menuClose { display:none; }
+  @media (max-width:640px){
+    #panel{ width:calc(100% - 24px); max-height:70%; display:none; }
+    body.menu-open #panel{ display:block; }
+    #menuBtn{ display:block; position:fixed; top:12px; left:12px; z-index:3; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font:600 13px system-ui, sans-serif; color:var(--ink); box-shadow:0 4px 18px #0001; }
+    body.menu-open #menuBtn{ display:none; }
+    #menuClose{ display:block; position:sticky; top:0; float:right; background:none; border:none; font-size:22px; line-height:1; padding:0 2px; color:var(--mute); cursor:pointer; }
+  }
+  @media (max-width:640px){ #info{ top:auto; bottom:12px; right:12px; left:12px; width:auto; max-height:40%; } }
+  .lbl.roadno { background:#c62828; color:#fff; font:700 11px system-ui; padding:1px 5px; border-radius:8px; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="labels"></div>
+
+<button id="menuBtn" aria-label="Open menu">☰ Menu</button>
+<div id="panel">
+  <button id="menuClose" aria-label="Close menu">×</button>
+  <h1>Savana · 3D (sanction plan)</h1>
+  <p class="note">Built from the 2021 revised sanction plan (1:1750). Plot numbers, sizes and areas from the plan's tables; roads, parks and civic areas traced from the drawing.</p>
+
+  <h2>View</h2>
+  <div class="btns">
+    <button data-view="top">Top</button>
+    <button data-view="iso">3D</button>
+    <button data-view="street">Street</button>
+    <button id="btnHouses">Show houses</button>
+    <button id="btnMeasure">Measure</button>
+  </div>
+  <div class="row" style="margin-top:8px"><label><input type="checkbox" id="chkLabels" checked>Place &amp; road names</label></div>
+  <div class="row"><label><input type="checkbox" id="chkNums" checked>Plot numbers (when zoomed in)</label></div>
+  <div class="row"><label><input type="checkbox" id="chkStreet" checked>Hedges, footpaths &amp; plot markers</label></div>
+  <div class="row"><label><input type="checkbox" id="chkWall" checked>Boundary wall (7 ft)</label></div>
+  <div class="row"><label><input type="checkbox" id="chkWeeds" checked>Overgrown weeds on open plots</label></div>
+  <div class="row"><label><input type="checkbox" id="chkFence" checked>Picket fences</label><span class="cnt" id="fenceCnt"></span></div>
+
+  <h2>Plots</h2>
+  <div class="row"><label><input type="checkbox" id="chkTint">Colour by plot size</label></div>
+  <div id="layers" class="tints off"></div>
+  <p class="note">Click a plot to add or remove a 3 ft picket fence.</p>
+  <h2>Site</h2>
+  <div id="layers2"></div>
+
+  <h2>Original plan overlay</h2>
+  <input id="overlay" type="range" min="0" max="1" step="0.05" value="0">
+
+  <h2>Find plot number</h2>
+  <input id="search" type="text" placeholder="e.g. 742" inputmode="numeric">
+
+  <h2>Export</h2>
+  <div class="btns">
+    <button id="btnGlb">Download .glb</button>
+    <button id="btnJson">Download data .json</button>
+  </div>
+  <p class="note" style="margin-top:6px">.glb opens in Blender, SketchUp (with a plugin), Windows 3D Viewer and similar tools. Units are metres.</p>
+
+  <h2>Amenities</h2>
+  <div id="parks"></div>
+</div>
+
+<div id="info"></div>
+<div id="hint">Drag to orbit · right-drag to pan · scroll to zoom · click a plot or park</div>
+
+<script src="site-data.js"></script>
+<script src="../../../fences.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const SITE = window.SITE;
+const FT = 3.28084;
+
+const TYPES = {
+  sapphire: { name:'Sapphire', size:"30' × 40'", m:'9.14 × 12.19 m', color:0xfdf3a0, house:7 },
+  ruby:     { name:'Ruby',     size:"30' × 50'", m:'9.14 × 15.24 m', color:0xf2a5a2, house:8 },
+  diamond:  { name:'Diamond',  size:"40' × 60'", m:'12.19 × 18.28 m', color:0x3ca3ab, house:9 },
+  platinum: { name:'Platinum', size:"50' × 80'", m:'15.24 × 24.38 m', color:0x8fd7f5, house:10 },
+  premium:  { name:'Premium',  size:'Various sizes', m:'', color:0xbc805f, house:11 },
+};
+const SITE_LAYERS = {
+  park:     { name:'Parks & green',     color:0x4c9a2e, h:0.35 },
+  open:     { name:'Civic amenities',   color:0xdfe5cf, h:0.25 },
+  reserved: { name:'Non-Savana land',   color:0xf7f8f3, h:1.0 },
+  clubhouse:{ name:'Club house',        color:0x8a6bb0, h:0.6 },
+  road:     { name:'Roads',             color:0x4a4c4f, h:0.12 },
+  trees:    { name:'Trees',             color:0x3f7d3a },
+};
+const AMENITIES = {
+  'Park 3':['Children’s play area','Sand pit with climbing wall','Elders chit chat zone','Floral garden','Pet park','Multipurpose court','Sand volley ball'],
+  'Park 4':['Children’s play on lawn','Reflexology pathway','Elders chit chat zone'],
+  'Park 5':['Mini golf putting','Pavilion with seater below','Cricket pitch','Multipurpose court','Meditation zone','Multipurpose maidan','Sand volley ball','Skating rink','Overhead tank'],
+  'Park 7':['Children’s play area on lawn','Children’s play area on EPDM','Floral garden','Tree court – flowering trees','Swing park','Music and trampoline park','Shipwreck park','Seating gallery','Multipurpose lawn','Repose zone','Afforestation belt'],
+  'Park 8':['Unique tree court','Palm court','Rock garden','Zen garden','Afforestation belt','Maze garden','Butterfly garden','Fruit orchard','Community kitchen garden','Open air theatre','Giant chess, ludo, snake & ladder, hopscotch','Tennis court','Basketball court','Sand volleyball court'],
+  'Club House':['Multipurpose hall','Restaurant','Four indoor badminton courts','Gym and yoga','Health club','Pool table','Creche','Salon','Supermarket','Table tennis & indoor games','Swimming pool','Multipurpose gathering lawn','Kids play area'],
+};
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.getElementById('view').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdfe8ee);
+scene.fog = new THREE.Fog(0xdfe8ee, 1800, 4500);
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.5, 9000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI/2 - 0.02;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa38f, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(-500, 900, 400); sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left:-650, right:650, top:650, bottom:-650, near:10, far:2500 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshLambertMaterial({ color:0xe4e9dc }));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.05; ground.receiveShadow = true;
+scene.add(ground);
+
+// ---------- helpers ----------
+const toShape = (outer, holes=[]) => {
+  const s = new THREE.Shape(outer.map(([x,y]) => new THREE.Vector2(x,y)));
+  holes.forEach(h => s.holes.push(new THREE.Path(h.map(([x,y]) => new THREE.Vector2(x,y)))));
+  return s;
+};
+const extrude = (shape, h, base=0) => {
+  const g = new THREE.ExtrudeGeometry(shape, { depth:h, bevelEnabled:false });
+  g.rotateX(-Math.PI/2); g.translate(0, base, 0); return g;
+};
+const centroid = poly => poly.reduce((a,[x,y]) => [a[0]+x/poly.length, a[1]+y/poly.length], [0,0]);
+const pointInPoly = ([x,y], poly) => { let c=false; for (let i=0,j=poly.length-1;i<poly.length;j=i++){ const [xi,yi]=poly[i],[xj,yj]=poly[j]; if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi)) c=!c; } return c; };
+const inset = (poly, d) => { const [cx,cy] = centroid(poly); return poly.map(([x,y]) => { const dx=x-cx, dy=y-cy, L=Math.hypot(dx,dy)||1; const k=Math.max(0.2,(L-d*1.41)/L); return [cx+dx*k, cy+dy*k]; }); };
+const hex = c => '#' + c.toString(16).padStart(6,'0');
+
+const site = new THREE.Group(); site.name = 'Savana-1B'; scene.add(site);
+const slab = new THREE.Mesh(extrude(toShape(SITE.boundary), 0.1, -0.12), new THREE.MeshLambertMaterial({ color:0xa8a08c }));
+slab.receiveShadow = true; slab.name = 'site-ground';
+
+const groups = {};
+[...Object.keys(TYPES), ...Object.keys(SITE_LAYERS)].forEach(k => { const g = new THREE.Group(); g.name = k; groups[k] = g; site.add(g); });
+const pickables = [];
+groups.road.add(slab);
+
+// ---------- regions ----------
+const parkNames = new Map();
+// lush, well-kept park lawn
+const LAWN_MAT = (() => {
+  const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N; const g = cv.getContext('2d');
+  let seed = 5; const r = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#4c9a2e'; g.fillRect(0, 0, N, N);
+  for (let i = 0; i < 5000; i++) { g.fillStyle = `hsla(${95 + r()*20},${50 + r()*20}%,${30 + r()*16}%,.35)`; g.fillRect(r()*N, r()*N, 1 + r()*3, 1 + r()*3); }
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1/8, 1/8); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshLambertMaterial({ map:t });
+})();
+// ---------- road rectangles: one selectable mesh per road; 18 m roads darker, with a raised median ----------
+const ROAD_MAT = { 9: new THREE.MeshLambertMaterial({ color:0x7a7c80 }), 12: new THREE.MeshLambertMaterial({ color:0x63656a }),
+                   18: new THREE.MeshLambertMaterial({ color:0x2e3034 }) };
+const MEDIAN_MAT = new THREE.MeshLambertMaterial({ color:0xd8d4c4 });
+for (const r of (SITE.roadRects || [])) {
+  const mat = ROAD_MAT[r.width_m] || ROAD_MAT[12];
+  const top = r.width_m >= 18 ? 0.07 : r.width_m >= 12 ? 0.05 : 0.03;      // distinct heights: no z-fighting at junctions
+  const m = new THREE.Mesh(extrude(toShape(r.poly), top, 0), mat);
+  m.receiveShadow = true; m.name = r.id;
+  m.userData = { kind:'road', id:r.id, name:`${r.id} · ${r.name}`, width_m:r.width_m, length_m:r.length_m };
+  groups.road.add(m); pickables.push(m);
+  if (r.width_m >= 18) {            // 1 m wide, 15 cm kerbed median along the centre line
+    const [a, b] = r.centre, dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy), nx = -dy/L*0.5, ny = dx/L*0.5;
+    const med = [[a[0]+nx, a[1]+ny], [b[0]+nx, b[1]+ny], [b[0]-nx, b[1]-ny], [a[0]-nx, a[1]-ny]];
+    const mm = new THREE.Mesh(extrude(toShape(med), 0.2, 0.07), MEDIAN_MAT); mm.castShadow = mm.receiveShadow = true;
+    groups.road.add(mm);
+  }
+}
+for (const r of SITE.regions) {
+  const L = SITE_LAYERS[r.layer]; if (!L || r.layer === 'road') continue;   // roads = the asphalt base
+  const lawn = r.layer === 'park';
+  const m = new THREE.Mesh(extrude(toShape(r.outer, r.holes), L.h, 0), lawn ? LAWN_MAT : new THREE.MeshLambertMaterial({ color:L.color }));
+  m.receiveShadow = true; m.castShadow = r.layer === 'reserved';
+  m.name = r.id;
+  const lm = SITE.landmarks.find(l => (l.kind === 'park' || l.kind === 'amenity') && pointInPoly(l.at, r.outer));
+  m.userData = { kind:'region', id:r.id, layer:r.layer, area_m2:r.area_m2, label: lm?.name };
+  groups[r.layer].add(m); pickables.push(m);
+  if (r.layer === 'reserved') {
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color:0x555555 }));
+    groups.reserved.add(e);
+  }
+}
+
+// ---------- plots ----------
+const plotIndex = new Map(), plotList = [];
+const houseGroups = [];
+const edgeMat = new THREE.LineBasicMaterial({ color:0x2b2b2b, transparent:true, opacity:0.9 });
+const NEUTRAL = 0xffffff;   // with the soil texture: plots show bare red laterite when size tint is off
+// procedural red, rocky laterite soil (Bangalore) — tiles every 6 m
+function soilTexture() {
+  const N = 512, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  let seed = 11; const r = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#7e3a22'; g.fillRect(0, 0, N, N);
+  for (let i = 0; i < 9000; i++) {           // mottling
+    const l = 28 + r()*22, a = 0.10 + r()*0.25;
+    g.fillStyle = `hsla(${12 + r()*14},${45 + r()*25}%,${l}%,${a})`;
+    const x = r()*N, y = r()*N, s = 2 + r()*14;
+    g.beginPath(); g.ellipse(x, y, s, s*(0.5+r()*0.5), r()*3, 0, 7); g.fill();
+  }
+  for (let i = 0; i < 700; i++) {            // gravel and stones
+    const x = r()*N, y = r()*N, s = 1 + r()*r()*7, l = 35 + r()*35;
+    g.fillStyle = `hsl(${15 + r()*20},${15 + r()*25}%,${l}%)`;
+    g.beginPath(); g.ellipse(x, y, s, s*(0.6+r()*0.4), r()*3, 0, 7); g.fill();
+    g.fillStyle = 'rgba(40,15,8,.35)'; g.beginPath(); g.ellipse(x+s*0.35, y+s*0.35, s, s*0.5, 0, 0, 7); g.fill();
+  }
+  for (let i = 0; i < 1400; i++) {           // patchy green weed cover
+    const x = r()*N, y = r()*N, sz = 4 + r()*r()*30;
+    g.fillStyle = `hsla(${68 + r()*32},${28 + r()*25}%,${22 + r()*16}%,${0.25 + r()*0.45})`;
+    g.beginPath(); g.ellipse(x, y, sz, sz*(0.5+r()*0.5), r()*3, 0, 7); g.fill();
+  }
+  for (let i = 0; i < 1200; i++) {            // dry grass tufts
+    g.strokeStyle = `hsla(${70 + r()*30},${30 + r()*20}%,${30 + r()*20}%,.55)`; g.lineWidth = 1;
+    const x = r()*N, y = r()*N;
+    for (let k = 0; k < 5; k++) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + (r()-0.5)*10, y - 3 - r()*8); g.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1/6, 1/6); t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8; return t;
+}
+const SOIL = soilTexture();
+const plotMats = {};
+const PLOT_H = 0.3, BASE = 0.12;
+for (const key of Object.keys(TYPES)) {
+  const list = SITE.plots.filter(p => p.type === key);
+  if (!list.length) continue;
+  const T = TYPES[key];
+  const geos = [], hg = [], rg = [];
+  list.forEach((p, i) => {
+    const g = extrude(toShape(p.poly), PLOT_H, BASE);
+    g.setAttribute('plotIdx', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(i), 1));
+    geos.push(g);
+    hg.push(extrude(toShape(inset(p.poly, 1.5)), T.house, BASE + PLOT_H));
+    rg.push(extrude(toShape(inset(p.poly, 1.2)), 0.4, BASE + PLOT_H + T.house));
+    const c = centroid(p.poly);
+    const rec = { plot:p, key, c };
+    plotList.push(rec);
+    if (p.number) plotIndex.set(String(p.number), rec);
+  });
+  const merged = mergeGeometries(geos);
+  plotMats[key] = new THREE.MeshLambertMaterial({ color:NEUTRAL, map:SOIL });
+  const mesh = new THREE.Mesh(merged, plotMats[key]);
+  mesh.receiveShadow = true; mesh.name = `plots-${key}`; mesh.userData = { kind:'plots', key, list };
+  groups[key].add(mesh); pickables.push(mesh);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(merged, 30), edgeMat); edges.name = `plot-edges-${key}`;
+  groups[key].add(edges);
+  const houses = new THREE.Group(); houses.name = `houses-${key}`; houses.visible = false;
+  const wall = new THREE.Color(T.color).lerp(new THREE.Color(0xffffff), 0.6);
+  const hm = new THREE.Mesh(mergeGeometries(hg), new THREE.MeshLambertMaterial({ color:wall }));
+  const rm = new THREE.Mesh(mergeGeometries(rg), new THREE.MeshLambertMaterial({ color:0x6b4a3a }));
+  [hm, rm].forEach(x => { x.castShadow = x.receiveShadow = true; houses.add(x); });
+  groups[key].add(houses); houseGroups.push(houses);
+}
+
+// ---------- streetscape: hedges + paver footpaths on street-facing plot edges, white corner markers ----------
+const TOP = BASE + PLOT_H;
+const boxAlong = (a, b, off, width, h, y0) => {      // box along segment a→b, centre offset outward by `off`
+  const dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy); if (L < 0.3) return null;
+  const nx = dy/L, ny = -dx/L;                        // outward normal for a CCW polygon
+  const g = new THREE.BoxGeometry(L, h, width);
+  g.rotateY(Math.atan2(dy, dx));                      // scene z = -y, so +angle about Y follows the edge
+  g.translate((a[0]+b[0])/2 + nx*off, y0 + h/2, -((a[1]+b[1])/2 + ny*off));
+  return g;
+};
+const ccw = poly => { let s = 0; for (let i = 0; i < poly.length; i++) { const [x1,y1] = poly[i], [x2,y2] = poly[(i+1)%poly.length]; s += x1*y2 - x2*y1; } return s > 0 ? poly : [...poly].reverse(); };
+const streetTrees = [];
+const extEdges = new Map();   // plot id -> indices (in ccw order) of street-facing edges
+const streetGroup = new THREE.Group(); streetGroup.name = 'streetscape'; site.add(streetGroup);
+(function streetscape() {
+  const CELL = 40, grid = new Map(), key = (x, y) => `${Math.floor(x/CELL)},${Math.floor(y/CELL)}`;
+  SITE.plots.forEach(p => { const k = key(...centroid(p.poly)); (grid.get(k) || grid.set(k, []).get(k)).push(p); });
+  const near = ([x, y]) => { const out = []; for (let i=-1;i<=1;i++) for (let j=-1;j<=1;j++) out.push(...(grid.get(`${Math.floor(x/CELL)+i},${Math.floor(y/CELL)+j}`) || [])); return out; };
+  const blockers = SITE.regions.filter(r => r.layer === 'park' || r.layer === 'reserved');
+  let seed = 3; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const hedge = [], path = [], corners = new Map();
+  for (const p of SITE.plots) {
+    const poly = ccw(p.poly);
+    poly.forEach(c => corners.set(c.map(v => Math.round(v*2)/2).join(','), c));
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i+1)%poly.length];
+      const dx = b[0]-a[0], dy = b[1]-a[1], L = Math.hypot(dx, dy); if (L < 2) continue;
+      const nx = dy/L, ny = -dx/L, m = [(a[0]+b[0])/2 + nx*2.5, (a[1]+b[1])/2 + ny*2.5];
+      if (near(m).some(q => q !== p && pointInPoly(m, q.poly))) continue;          // shared with a neighbour
+      if (!SITE.footpaths) { const g = boxAlong(a, b, 1.3, 1.2, 0.1, BASE); if (g) path.push(g); }   // per-edge strips (old data only)
+      if (blockers.some(r => pointInPoly(m, r.outer))) continue;                    // faces a park / other land
+      (extEdges.get(p.id) || extEdges.set(p.id, []).get(p.id)).push(i);
+      const nt = Math.max(1, Math.round(L/9));                                       // evenly spaced avenue trees
+      for (let k = 0; k < nt; k++) { const t = (k + 0.5)/nt; streetTrees.push([a[0]+dx*t + nx*2.6, a[1]+dy*t + ny*2.6]); }
+      const n = Math.max(1, Math.round((L-0.8)/3));                                 // ~3 m hedge clumps
+      for (let k = 0; k < n; k++) {
+        const t0 = 0.4/L + (1-0.8/L)*k/n, t1 = 0.4/L + (1-0.8/L)*(k+1)/n;
+        const g = boxAlong([a[0]+dx*t0, a[1]+dy*t0], [a[0]+dx*t1, a[1]+dy*t1], 0.4, 0.7, 0.75 + rnd()*0.3, BASE);
+        if (g) hedge.push(g);
+      }
+    }
+  }
+  const hedgeMesh = new THREE.Mesh(mergeGeometries(hedge), new THREE.MeshLambertMaterial({ color:0x3f6b2a }));
+  hedgeMesh.castShadow = hedgeMesh.receiveShadow = true; hedgeMesh.name = 'hedges';
+  // footpaths: one merged ring per block from the data (no overlapping strips, so no z-fighting)
+  for (const f of (SITE.footpaths || [])) path.push(extrude(toShape(f.outer, f.holes), 0.06, BASE));
+  const pathMesh = new THREE.Mesh(mergeGeometries(path), new THREE.MeshLambertMaterial({ color:0xd8b77c, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1 }));
+  pathMesh.receiveShadow = true; pathMesh.name = 'footpaths';
+  const pts = [...corners.values()];
+  const stone = new THREE.InstancedMesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), new THREE.MeshLambertMaterial({ color:0xf2f0ea }), pts.length);
+  const mx = new THREE.Matrix4();
+  pts.forEach(([x, y], i) => stone.setMatrixAt(i, mx.makeTranslation(x, TOP + 0.3, -y)));
+  stone.name = 'plot-markers'; stone.castShadow = true;
+  streetGroup.add(hedgeMesh, pathMesh, stone);
+})();
+document.getElementById('chkStreet').onchange = e => streetGroup.visible = e.target.checked;
+
+// ---------- 7 ft concrete compound wall along the project boundary ----------
+const wallGroup = new THREE.Group(); wallGroup.name = 'boundary-wall'; site.add(wallGroup);
+(function wall() {
+  const WALL_H = 7/FT, segs = [], posts = [];
+  for (const run of (SITE.wall || [])) for (let i = 0; i < run.length - 1; i++) {
+    const a = run[i], b = run[i+1];
+    const g = boxAlong(a, b, 0, 0.23, WALL_H, 0); if (g) segs.push(g);
+    const L = Math.hypot(b[0]-a[0], b[1]-a[1]), n = Math.floor(L/3);      // pilasters every ~3 m
+    for (let k = 0; k <= n; k++) { const t = n ? k/n : 0; posts.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]); }
+  }
+  if (!segs.length) return;
+  const m = new THREE.Mesh(mergeGeometries(segs), new THREE.MeshLambertMaterial({ color:0xbdb8ad }));
+  m.castShadow = m.receiveShadow = true; m.name = 'wall';
+  const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, WALL_H + 0.1, 0.35), new THREE.MeshLambertMaterial({ color:0xb0aba0 }), posts.length);
+  const mx = new THREE.Matrix4(); posts.forEach(([x, y], i) => pm.setMatrixAt(i, mx.makeTranslation(x, (WALL_H+0.1)/2, -y)));
+  pm.castShadow = true; pm.name = 'wall-pilasters';
+  wallGroup.add(m, pm);
+})();
+document.getElementById('chkWall').onchange = e => wallGroup.visible = e.target.checked;
+
+// ---------- 3 ft white concrete picket fences on chosen plots ----------
+const FENCE_KEY = 'savana-fence-overrides';
+const CONFIRMED = new Map((window.FENCES || []).map(f => [f.plot, f.gate]));
+const fenced = new Map(CONFIRMED);                    // plot id -> gate ('single' | 'double' | null)
+let overrides = { add:{}, remove:[] };
+try { overrides = Object.assign(overrides, JSON.parse(localStorage.getItem(FENCE_KEY) || '{}')); } catch (e) {}
+overrides.remove.forEach(id => fenced.delete(id));
+Object.entries(overrides.add).forEach(([id, g]) => fenced.set(id, g));
+const saveFences = () => {
+  overrides = { add:{}, remove:[] };
+  for (const [id, g] of fenced) if (!CONFIRMED.has(id)) overrides.add[id] = g;
+  for (const id of CONFIRMED.keys()) if (!fenced.has(id)) overrides.remove.push(id);
+  try { localStorage.setItem(FENCE_KEY, JSON.stringify(overrides)); } catch (e) {}
+};
+const GATE_W = { single: 4/FT, double: 10/FT };
+const fenceGroup = new THREE.Group(); fenceGroup.name = 'picket-fences'; site.add(fenceGroup);
+const fenceMat = new THREE.MeshLambertMaterial({ color:0xf5f4ef });
+const gateMat = new THREE.MeshLambertMaterial({ color:0x26282b });
+function rebuildFences() {
+  fenceGroup.children.forEach(c => c.geometry.dispose()); fenceGroup.clear();
+  const H = 3/FT, pickets = [], rails = [], gate = [], gposts = [];
+  const bar = (x, y, h, y0) => { const g = new THREE.BoxGeometry(0.03, h, 0.03); g.translate(x, y0 + h/2, -y); return g; };
+  for (const [id, gateType] of fenced) {
+    const rec = plotList.find(r => r.plot.id === id); if (!rec) continue;
+    const poly = inset(ccw(rec.plot.poly), 0.2);
+    const L = i => Math.hypot(poly[(i+1)%poly.length][0]-poly[i][0], poly[(i+1)%poly.length][1]-poly[i][1]);
+    // gate on the frontage: the shortest street-facing edge that is long enough
+    let gEdge = -1;
+    if (gateType) {
+      const cand = (extEdges.get(id) || []).filter(i => L(i) > GATE_W[gateType] + 1);
+      const all = cand.length ? cand : poly.map((_, i) => i).filter(i => L(i) > GATE_W[gateType] + 1);
+      gEdge = all.sort((x, y) => L(x) - L(y))[0] ?? -1;
+    }
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i+1)%poly.length], len = L(i), ang = Math.atan2(b[1]-a[1], b[0]-a[0]);
+      const at = t => [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t];
+      let g0 = 2, g1 = 2;                                // gate span as fractions of the edge
+      if (i === gEdge) { const w = GATE_W[gateType]/len; g0 = 0.5 - w/2; g1 = 0.5 + w/2; }
+      const n = Math.max(1, Math.round(len/0.17));
+      for (let k = 0; k < n; k++) { const t = k/n; if (t > g0 - 0.01 && t < g1 + 0.01) continue; pickets.push([...at(t), ang, k % 12 === 0]); }
+      const runs = i === gEdge ? [[0, g0], [g1, 1]] : [[0, 1]];
+      for (const [t0, t1] of runs) rails.push(boxAlong(at(t0), at(t1), 0, 0.05, 0.08, TOP + 0.2), boxAlong(at(t0), at(t1), 0, 0.05, 0.08, TOP + 0.65));
+      if (i === gEdge) {                                 // dark metal gate: frame + vertical bars; double gate = two leaves
+        const leaves = gateType === 'double' ? [[g0, 0.5], [0.5, g1]] : [[g0, g1]];
+        for (const [t0, t1] of leaves) {
+          const p0 = at(t0 + 0.004), p1 = at(t1 - 0.004);
+          gate.push(boxAlong(p0, p1, 0, 0.04, 0.05, TOP + 0.08), boxAlong(p0, p1, 0, 0.04, 0.05, TOP + H - 0.05));
+          const lw = (t1 - t0) * len, nb = Math.max(2, Math.round(lw / 0.12));
+          for (let k = 0; k <= nb; k++) { const [x, y] = at(t0 + 0.004 + (t1 - t0 - 0.008) * k/nb); gate.push(bar(x, y, H - 0.08, TOP + 0.05)); }
+        }
+        for (const t of [g0, g1]) { const [x, y] = at(t); const g = new THREE.BoxGeometry(0.2, H + 0.15, 0.2); g.translate(x, TOP + (H + 0.15)/2, -y); gposts.push(g); }
+      }
+    }
+  }
+  if (pickets.length) {
+    const pk = new THREE.InstancedMesh(new THREE.BoxGeometry(0.09, 1, 0.04), fenceMat, pickets.length);
+    const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0);
+    pickets.forEach(([x, y, ang, post], i) => {
+      const h = post ? H + 0.08 : H;
+      mx.compose(new THREE.Vector3(x, TOP + h/2, -y), q.setFromAxisAngle(up, ang), new THREE.Vector3(post ? 1.6 : 1, h, post ? 3 : 1));
+      pk.setMatrixAt(i, mx);
+    });
+    pk.castShadow = true; pk.name = 'pickets';
+    const rm = new THREE.Mesh(mergeGeometries([...rails.filter(Boolean), ...gposts]), fenceMat); rm.castShadow = true; rm.name = 'rails';
+    fenceGroup.add(pk, rm);
+    if (gate.length) { const gm = new THREE.Mesh(mergeGeometries(gate.filter(Boolean)), gateMat); gm.castShadow = true; gm.name = 'gates'; fenceGroup.add(gm); }
+  }
+  const shown = [...fenced.keys()].filter(id => plotList.some(r => r.plot.id === id)).length;
+  document.getElementById('fenceCnt').textContent = shown ? `${shown} plot${shown > 1 ? 's' : ''}` : '';
+}
+// ---------- overgrown weeds: tall grass + wildflower tufts on every plot without a fence ----------
+const weedGroup = new THREE.Group(); weedGroup.name = 'weeds'; site.add(weedGroup);
+const tuftGeo = (() => {
+  const parts = [];
+  for (let k = 0; k < 5; k++) {
+    const c = new THREE.ConeGeometry(0.05, 1, 3); c.translate(0, 0.5, 0);
+    c.rotateZ((k - 2) * 0.18); c.rotateY(k * 1.3); c.translate((k % 2 ? 0.08 : -0.06), 0, (k - 2) * 0.05);
+    parts.push(c);
+  }
+  return mergeGeometries(parts);
+})();
+const weedMat = new THREE.MeshLambertMaterial({ color:0xffffff, flatShading:true });
+function rebuildWeeds() {
+  weedGroup.children.forEach(c => c.dispose?.()); weedGroup.clear();
+  let seed = 19; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const pts = [];
+  for (const r of plotList) {
+    if (fenced.has(r.plot.id)) continue;                         // fenced plots are cleared
+    const poly = inset(r.plot.poly, 0.4);
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const n = Math.round(r.plot.area_m2 / 2.2);
+    for (let k = 0, t = 0; k < n && t < n * 3; t++) {
+      const p = [x0 + rnd()*(x1-x0), y0 + rnd()*(y1-y0)];
+      if (pointInPoly(p, poly)) { pts.push(p); k++; }
+    }
+  }
+  const im = new THREE.InstancedMesh(tuftGeo, weedMat, pts.length);
+  const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0,1,0), col = new THREE.Color();
+  pts.forEach(([x, y], i) => {
+    const h = 0.45 + rnd()*rnd()*1.1, w = 0.8 + rnd()*0.9;
+    mx.compose(new THREE.Vector3(x, TOP, -y), q.setFromAxisAngle(up, rnd()*6.28), new THREE.Vector3(w, h, w));
+    im.setMatrixAt(i, mx);
+    const v = rnd();                                             // mostly green, some straw, a few pink-flowering
+    if (v < 0.07) col.setHSL(0.95 + rnd()*0.04, 0.35, 0.68);
+    else if (v < 0.30) col.setHSL(0.12 + rnd()*0.04, 0.35, 0.45 + rnd()*0.1);
+    else col.setHSL(0.20 + rnd()*0.08, 0.35 + rnd()*0.2, 0.26 + rnd()*0.14);
+    im.setColorAt(i, col);
+  });
+  im.name = 'weed-tufts';
+  weedGroup.add(im);
+}
+document.getElementById('chkWeeds').onchange = e => weedGroup.visible = e.target.checked;
+document.getElementById('chkFence').onchange = e => fenceGroup.visible = e.target.checked;
+
+// ---------- trees: street trees from the drawing + scattered park trees ----------
+(function trees() {
+  let seed = 7; const rnd = () => (seed = (seed*16807) % 2147483647) / 2147483647;
+  const pts = streetTrees.map(([x,y]) => [x, y, 0.62 + rnd()*0.06]);   // regular avenue planting
+  for (const r of SITE.regions.filter(r => r.layer === 'park')) {
+    const xs = r.outer.map(p=>p[0]), ys = r.outer.map(p=>p[1]);
+    const [x0,x1,y0,y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const n = Math.min(300, Math.round(r.area_m2 / 250));
+    for (let k=0, t=0; k<n && t<n*8; t++) {
+      const p = [x0 + rnd()*(x1-x0), y0 + rnd()*(y1-y0)];
+      if (pointInPoly(p, r.outer) && !r.holes.some(h => pointInPoly(p, h))) { pts.push([...p, 0.6+rnd()*0.8]); k++; }
+    }
+  }
+  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.4, 0), new THREE.MeshLambertMaterial({ color:0x3f7d3a, flatShading:true }), pts.length);
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.32, 3, 5), new THREE.MeshLambertMaterial({ color:0x6b4f35 }), pts.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+  pts.forEach(([x,y,s], i) => {
+    trunk.setMatrixAt(i, m.compose(new THREE.Vector3(x, 1.5*s+0.3, -y), q, new THREE.Vector3(s,s,s)));
+    crown.setMatrixAt(i, m.compose(new THREE.Vector3(x, 4.0*s+0.3, -y), q, new THREE.Vector3(s,s*1.15,s)));
+  });
+  crown.castShadow = trunk.castShadow = true;
+  groups.trees.add(trunk, crown);
+})();
+
+// ---------- original plan overlay ----------
+const img = SITE.meta.planImage, mpp = SITE.meta.metres_per_px;
+const tex = new THREE.TextureLoader().load(window.PLAN_IMAGE); tex.colorSpace = THREE.SRGBColorSpace;
+const overlay = new THREE.Mesh(new THREE.PlaneGeometry(img.widthPx*mpp, img.heightPx*mpp),
+  new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:0, depthWrite:false }));
+overlay.rotation.x = -Math.PI/2; overlay.position.y = 1.0; overlay.visible = false; overlay.renderOrder = 10;
+scene.add(overlay);
+document.getElementById('overlay').oninput = e => { const v = +e.target.value; overlay.material.opacity = v; overlay.visible = v > 0; };
+
+// ---------- panel ----------
+const counts = {}; SITE.plots.forEach(p => counts[p.type] = (counts[p.type]||0) + 1);
+const area = {}; SITE.regions.forEach(r => area[r.layer] = (area[r.layer]||0) + r.area_m2);
+const mkRow = (el, key, color, label, extra) => {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label><input type="checkbox" checked><span class="sw" style="background:${hex(color)}"></span>${label}</label><span class="cnt">${extra}</span>`;
+  row.querySelector('input').onchange = e => { groups[key].visible = e.target.checked; };
+  el.appendChild(row);
+};
+// plot size colouring is an overlay on the plots: boundaries always stay; unticking a class only removes its tint
+const tintOn = Object.fromEntries(Object.keys(TYPES).map(k => [k, true]));
+const applyTint = () => {
+  const all = document.getElementById('chkTint').checked;
+  document.getElementById('layers').classList.toggle('off', !all);
+  for (const k of Object.keys(plotMats)) {
+    const tint = all && tintOn[k];
+    plotMats[k].color.setHex(tint ? TYPES[k].color : NEUTRAL);
+    plotMats[k].map = tint ? null : SOIL; plotMats[k].needsUpdate = true;
+  }
+};
+for (const [k, T] of Object.entries(TYPES)) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label><input type="checkbox" checked><span class="sw" style="background:${hex(T.color)}"></span>${T.name} <span class="cnt">${T.size}</span></label><span class="cnt">${counts[k]||0}</span>`;
+  row.querySelector('input').onchange = e => { tintOn[k] = e.target.checked; applyTint(); };
+  document.getElementById('layers').appendChild(row);
+}
+document.getElementById('chkTint').onchange = applyTint;
+for (const [k, L] of Object.entries(SITE_LAYERS)) mkRow(document.getElementById('layers2'), k, L.color, L.name, area[k] ? `${(area[k]/4046.86).toFixed(1)} ac` : '');
+document.getElementById('parks').innerHTML = Object.entries(AMENITIES).map(([k,v]) =>
+  `<details><summary>${k}</summary><ol>${v.map(x=>`<li>${x}</li>`).join('')}</ol></details>`).join('');
+
+// ---------- camera presets ----------
+const views = {
+  top:    () => { camera.position.set(0, 1300, 1); controls.target.set(0,0,0); },
+  iso:    () => { camera.position.set(-520, 560, 680); controls.target.set(0,0,0); },
+  street: () => { const t = controls.target.clone(); camera.position.set(t.x-50, 5, t.z+50); },
+};
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => views[b.dataset.view]());
+views.iso();
+
+let housesOn = false;
+document.getElementById('btnHouses').onclick = e => {
+  housesOn = !housesOn; e.target.classList.toggle('on', housesOn);
+  e.target.textContent = housesOn ? 'Hide houses' : 'Show houses';
+  houseGroups.forEach(h => h.visible = housesOn);
+};
+
+// ---------- info / picking ----------
+const info = document.getElementById('info');
+const hl = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color:0xff3b30, transparent:true, opacity:0.55, depthTest:false }));
+hl.renderOrder = 20; hl.visible = false; scene.add(hl);
+const fmtA = m2 => `${m2.toFixed(0)} m² · ${(m2*FT*FT).toFixed(0)} ft²`;
+const ftIn = m => { const f = m*FT; return `${Math.round(f)}'`; };
+
+function showPlot(rec) {
+  const { plot:p, key } = rec, T = TYPES[key];
+  hl.geometry.dispose(); hl.geometry = extrude(toShape(p.poly), 0.3, BASE + PLOT_H + 0.05); hl.visible = true;
+  info.style.display = 'block';
+  info.innerHTML = `<h1>Plot ${p.number ?? '—'}${p.number_inferred ? ' <span class="cnt" title="Number not legible on the drawing; inferred from neighbours">(inferred)</span>' : ''}</h1><table>
+    <tr><td>Size class</td><td>${T.name}</td></tr>
+    <tr><td>Legend size</td><td>${T.size}${T.m ? `<br><span class="cnt">${T.m}</span>` : ''}</td></tr>
+    <tr><td>Measured</td><td>${p.w_m.toFixed(1)} × ${p.d_m.toFixed(1)} m<br><span class="cnt">≈ ${ftIn(p.w_m)} × ${ftIn(p.d_m)}</span></td></tr>
+    <tr><td>Area</td><td>${fmtA(p.area_m2)}</td></tr>
+  </table><p class="note" style="margin-top:6px">Measured from the drawing (≈ ${mpp.toFixed(2)} m per pixel); expect ±0.5 m.</p>
+  <table><tr><td>Picket fence</td><td>${fenced.has(p.id) ? `Yes, 3 ft${CONFIRMED.has(p.id) ? ' (confirmed)' : ''}<br><span class="cnt">${({single:'Gate', double:'10 ft double gate'})[fenced.get(p.id)] || 'No gate'}</span>` : 'No'}</td></tr></table>
+  <button id="btnFence">${fenced.has(p.id) ? 'Remove picket fence' : 'Add 3 ft picket fence'}</button>`;
+  document.getElementById('btnFence').onclick = () => {
+    fenced.has(p.id) ? fenced.delete(p.id) : fenced.set(p.id, CONFIRMED.has(p.id) ? CONFIRMED.get(p.id) : 'single');
+    saveFences(); rebuildFences(); rebuildWeeds(); showPlot(rec);
+  };
+}
+function showRegion(u) {
+  hl.visible = false; info.style.display = 'block';
+  const title = u.label || SITE_LAYERS[u.layer].name;
+  const list = AMENITIES[title];
+  info.innerHTML = `<h1>${title}</h1><table>
+    <tr><td>Type</td><td>${SITE_LAYERS[u.layer].name}</td></tr>
+    <tr><td>Area</td><td>${fmtA(u.area_m2)}</td></tr>
+    <tr><td>Acres</td><td>${(u.area_m2/4046.86).toFixed(2)}</td></tr></table>
+    ${list ? `<h2>Amenities</h2><ol>${list.map(x=>`<li>${x}</li>`).join('')}</ol>` : ''}`;
+}
+
+// ---------- labels (DOM, projected each frame) ----------
+const labelsEl = document.getElementById('labels');
+const lmEls = [...SITE.landmarks, ...(SITE.roadRects || []).map(r => ({ name:r.id, kind:'roadno', at:r.label_at }))].map(l => {
+  const el = document.createElement('div'); el.className = `lbl ${l.kind}`; el.textContent = l.name; labelsEl.appendChild(el);
+  return { el, v: new THREE.Vector3(l.at[0], l.kind === 'park' || l.kind === 'amenity' ? 8 : 1, -l.at[1]), kind:l.kind };
+});
+const numPool = [];
+const getNumEl = i => { while (numPool.length <= i) { const e = document.createElement('div'); e.className = 'lbl num'; labelsEl.appendChild(e); numPool.push(e); } return numPool[i]; };
+const showLabels = document.getElementById('chkLabels'), showNums = document.getElementById('chkNums');
+const v3 = new THREE.Vector3();
+function project(v) { v3.copy(v).project(camera); return v3.z < 1 && Math.abs(v3.x) < 1.1 && Math.abs(v3.y) < 1.1 ? [(v3.x+1)/2*innerWidth, (1-v3.y)/2*innerHeight] : null; }
+function updateLabels() {
+  const dist = camera.position.distanceTo(controls.target);
+  for (const l of lmEls) {
+    const vis = showLabels.checked && (l.kind !== 'street' || dist < 700) && groupsVisibleFor(l);
+    const s = vis && project(l.v);
+    l.el.style.display = s ? 'block' : 'none';
+    if (s) { l.el.style.left = s[0]+'px'; l.el.style.top = s[1]+'px'; }
+  }
+  let n = 0;
+  if (showNums.checked && dist < 260) {
+    const cam = camera.position;
+    for (const r of plotList) {
+      if (!r.plot.number || !groups[r.key].visible) continue;
+      const dx = r.c[0]-cam.x, dz = -r.c[1]-cam.z;
+      if (dx*dx + dz*dz > 300*300) continue;
+      const s = project(new THREE.Vector3(r.c[0], BASE+PLOT_H+(housesOn ? TYPES[r.key].house+0.6 : 0.1), -r.c[1]));
+      if (!s) continue;
+      const e = getNumEl(n++); e.textContent = r.plot.number; e.classList.toggle('inf', !!r.plot.number_inferred);
+      e.style.display = 'block'; e.style.left = s[0]+'px'; e.style.top = s[1]+'px';
+      if (n >= 500) break;
+    }
+  }
+  for (let i = n; i < numPool.length; i++) numPool[i].style.display = 'none';
+}
+const groupsVisibleFor = () => true;
+
+// ---------- measure ----------
+let measuring = false, mPts = [];
+const mLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:0xd92d20, depthTest:false }));
+mLine.renderOrder = 30; scene.add(mLine);
+let mLabel = null, mAnchor = null;
+const defaultHint = matchMedia('(max-width:640px)').matches ? 'Drag to orbit · two fingers to pan & zoom · tap a plot' : 'Drag to orbit · right-drag to pan · scroll to zoom · click a plot or park';
+document.getElementById('hint').textContent = defaultHint;
+document.getElementById('btnMeasure').onclick = e => {
+  measuring = !measuring; e.target.classList.toggle('on', measuring); mPts = [];
+  mLine.geometry.setFromPoints([]); if (mLabel) { mLabel.remove(); mLabel = null; }
+  document.getElementById('hint').textContent = measuring ? 'Click two points to measure a distance' : defaultHint;
+};
+
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+let down = null;
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX-down[0], e.clientY-down[1]) > 4) return;
+  mouse.set(e.clientX/innerWidth*2-1, -e.clientY/innerHeight*2+1);
+  ray.setFromCamera(mouse, camera);
+  if (measuring) {
+    const hit = ray.intersectObjects([ground, slab, ...pickables], false)[0]; if (!hit) return;
+    mPts.push(hit.point.clone().setY(hit.point.y + 0.5)); if (mPts.length > 2) mPts = [mPts[2]];
+    mLine.geometry.setFromPoints(mPts);
+    if (mLabel) { mLabel.remove(); mLabel = null; }
+    if (mPts.length === 2) {
+      const d = mPts[0].distanceTo(mPts[1]);
+      mLabel = document.createElement('div'); mLabel.className = 'lbl measure';
+      mLabel.textContent = `${d.toFixed(1)} m · ${(d*FT).toFixed(0)} ft`;
+      labelsEl.appendChild(mLabel); mAnchor = mPts[0].clone().lerp(mPts[1], 0.5);
+    }
+    return;
+  }
+  const visible = pickables.filter(o => { let n=o; while(n){ if(!n.visible) return false; n=n.parent; } return true; });
+  const hit = ray.intersectObjects(visible, false)[0];
+  if (!hit) { info.style.display = 'none'; hl.visible = false; return; }
+  const u = hit.object.userData;
+  if (u.kind === 'plots') {
+    const i = hit.object.geometry.attributes.plotIdx.getX(hit.face.a);
+    const p = u.list[i];
+    showPlot(plotList.find(r => r.plot === p));
+  } else if (u.kind === 'road') showRoad(u);
+  else showRegion(u);
+});
+function showRoad(u) {
+  hl.visible = false; info.style.display = 'block';
+  info.innerHTML = `<h1>${u.name}</h1><table>
+    <tr><td>Width</td><td>${u.width_m} m${u.width_m >= 18 ? ' (main road, with median)' : ''}</td></tr>
+    <tr><td>Length</td><td>${u.length_m} m</td></tr><tr><td>Id</td><td>${u.id}</td></tr></table>`;
+}
+
+document.getElementById('search').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const rec = plotIndex.get(e.target.value.trim());
+  if (!rec) { e.target.style.borderColor = '#d33'; return; }
+  e.target.style.borderColor = '';
+  showPlot(rec); document.body.classList.remove('menu-open');
+  const [cx, cy] = rec.c;
+  controls.target.set(cx, 0, -cy); camera.position.set(cx-60, 90, -cy+90);
+});
+
+// ---------- export ----------
+const download = (blob, name) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000); };
+document.getElementById('btnGlb').onclick = () => {
+  new GLTFExporter().parse(site, buf => download(new Blob([buf], { type:'model/gltf-binary' }), 'savana-1b.glb'),
+    err => alert('Export failed: ' + err), { binary:true, onlyVisible:true });
+};
+document.getElementById('btnJson').onclick = () => {
+  const { meta, boundary, regions, plots, landmarks } = SITE;
+  download(new Blob([JSON.stringify({ meta, boundary, regions, plots: plots.map(p => ({ ...p, picket_fence: fenced.has(p.id), gate: fenced.has(p.id) ? fenced.get(p.id) : null })), landmarks }, null, 1)], { type:'application/json' }), 'savana-1b-data.json');
+};
+
+rebuildFences();
+rebuildWeeds();
+
+// ---------- mobile: the panel is closed by default and opens from the menu button ----------
+document.getElementById('menuBtn').onclick = () => document.body.classList.add('menu-open');
+document.getElementById('menuClose').onclick = () => document.body.classList.remove('menu-open');
+
+// ---------- loop ----------
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+const mv = new THREE.Vector3();
+renderer.setAnimationLoop(() => {
+  controls.update();
+  updateLabels();
+  if (mLabel && mAnchor) { mv.copy(mAnchor).project(camera); mLabel.style.left = (mv.x+1)/2*innerWidth+'px'; mLabel.style.top = (1-mv.y)/2*innerHeight+'px'; mLabel.style.display = mv.z < 1 ? 'block' : 'none'; }
+  renderer.render(scene, camera);
+});
+window.__scene = { scene, camera, controls, views, plotIndex, showPlot };
+</script>
+</body>
+</html>

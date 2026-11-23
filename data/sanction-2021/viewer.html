@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanction Plan Data</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --mut:#6b6b66; --line:#e2e1dc; --card:#fff; --ok:#2f7d4f; --bad:#b3462e; --acc:#3b5bdb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecebe6; --mut:#9a9992; --line:#2c2c2a; --card:#1e1e1c; --ok:#5fbf86; --bad:#e3795f; --acc:#8ea2ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, -apple-system, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:15px; margin:28px 0 8px; }
+  .mut { color:var(--mut); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .card b { display:block; font-size:18px; font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; background:var(--card); font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:500; position:sticky; top:0; background:var(--card); }
+  td.n, th.n { text-align:right; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .wrap { max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  input, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
+  .chip { display:inline-block; padding:1px 7px; border-radius:10px; border:1px solid var(--line); font-size:12px; }
+  ul { padding-left:18px; } li { margin:3px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Revised Sanction Plan: extracted data</h1>
+  <div class="mut" id="sub"></div>
+
+  <h2>Area statement</h2>
+  <div class="grid" id="areas"></div>
+
+  <h2>Site classes</h2>
+  <table id="classes"><thead><tr><th>Class</th><th class="n">Plots</th><th class="n">Area (sq m)</th><th class="n">Per plot</th></tr></thead><tbody></tbody></table>
+
+  <h2>Plots</h2>
+  <div class="controls">
+    <input id="q" placeholder="Plot number, e.g. 457" inputmode="numeric">
+    <select id="cls"><option value="">All classes</option></select>
+    <span class="mut" id="count"></span>
+  </div>
+  <div class="wrap"><table id="plots"><thead><tr><th>Plot</th><th>Class</th><th class="n">Frontage m</th><th class="n">Depth m</th><th class="n">Area sq m</th><th>Area from</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Consistency checks</h2>
+  <table id="checks"><tbody></tbody></table>
+
+  <h2>Parks and civic amenities</h2>
+  <div class="grid" id="parks"></div>
+
+  <h2>Approval</h2>
+  <table id="approval"><tbody></tbody></table>
+
+  <h2>Transcription notes</h2>
+  <ul id="notes"></ul>
+</main>
+<script src="sanction-data.js"></script>
+<script>
+const S = window.SANCTION, $ = s => document.querySelector(s);
+const fmt = n => n == null ? '' : Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+$('#sub').textContent = `${S.source.file} · scale ${S.source.printed_scale} · nominal ${S.source.nominal_m_per_scan_px} m per scan pixel (unverified)`;
+const A = S.area_statement;
+$('#areas').innerHTML = [['Total site', A.total_site_area.sqm, A.total_site_area.acres_guntas], ['Kharab', A.kharab_area.sqm, A.kharab_area.guntas], ['Net site', A.net_site_area.sqm, A.net_site_area.acres_guntas]]
+  .concat(A.landuse.map(l => [l.use, l.area_sqm, l.pct + '%']))
+  .map(([k, v, x]) => `<div class="card"><span class="mut">${esc(k)}</span><b>${fmt(v)}</b><span class="mut">sq m · ${esc(x)}</span></div>`).join('');
+$('#classes tbody').innerHTML = S.site_classes.map(c => `<tr><td>${esc(c.class)}</td><td class="n">${c.count}</td><td class="n">${fmt(c.area_sqm)}</td><td class="n">${c.frontage_m ? fmt(c.frontage_m * c.depth_m) : 'varies'}</td></tr>`).join('')
+  + `<tr><th>Total</th><th class="n">${S.totals.plots}</th><th class="n">${fmt(S.totals.area_sqm)}</th><th></th></tr>`;
+const sel = $('#cls');
+S.site_classes.forEach(c => sel.insertAdjacentHTML('beforeend', `<option>${esc(c.class)}</option>`));
+function draw() {
+  const q = $('#q').value.trim(), c = sel.value;
+  const rows = S.plots.filter(p => (!c || p.class === c) && (!q || String(p.plot).startsWith(q)));
+  $('#count').textContent = `${rows.length} plots`;
+  $('#plots tbody').innerHTML = rows.map(p => `<tr><td>${p.plot}</td><td><span class="chip">${esc(p.class)}</span></td><td class="n">${p.frontage_m ?? ''}</td><td class="n">${p.depth_m ?? ''}</td><td class="n">${fmt(p.area_sqm)}</td><td class="mut">${esc(p.area_source)}</td></tr>`).join('');
+}
+$('#q').addEventListener('input', draw); sel.addEventListener('change', draw); draw();
+$('#checks tbody').innerHTML = S.checks.map(c => `<tr><td class="${c.ok ? 'ok' : 'bad'}">${c.ok ? 'pass' : 'mismatch'}</td><td>${esc(c.check)}</td><td class="mut">${esc(c.detail)}</td></tr>`).join('');
+$('#parks').innerHTML = S.parks.concat(S.civic_amenities).map(p => `<div class="card"><span class="mut">${esc(p.park || p.ca)}</span><b>${fmt(p.area_sqm)}</b></div>`).join('');
+$('#approval tbody').innerHTML = Object.entries(S.approval).map(([k, v]) => `<tr><td class="mut">${esc(k.replace(/_/g, ' '))}</td><td>${esc(v)}</td></tr>`).join('');
+$('#notes').innerHTML = S.transcription_notes.map(n => `<li>${esc(n)}</li>`).join('');
+</script>
+</body>
+</html>

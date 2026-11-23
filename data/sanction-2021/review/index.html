@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanction Plan Review</title>
+<style>
+  :root { --bg:#f4f3ef; --fg:#1d1d1b; --mut:#6b6b66; --line:#dddcd6; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151514; --fg:#ecebe6; --mut:#9a9992; --line:#2c2c2a; --card:#1e1e1c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui, -apple-system, sans-serif; display:flex; height:100vh; }
+  aside { width:300px; flex:none; padding:14px; border-right:1px solid var(--line); overflow:auto; background:var(--card); }
+  h1 { font-size:16px; margin:0 0 6px; } h2 { font-size:13px; margin:16px 0 6px; }
+  .mut { color:var(--mut); }
+  label { display:flex; align-items:center; gap:8px; margin:4px 0; cursor:pointer; }
+  .sw { width:14px; height:14px; border-radius:3px; flex:none; }
+  .n { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--mut); }
+  input[type=text] { width:100%; font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+  #info { margin-top:10px; padding:8px; border:1px solid var(--line); border-radius:6px; min-height:60px; }
+  #missing { font-variant-numeric:tabular-nums; word-break:break-word; }
+  main { flex:1; overflow:auto; position:relative; }
+  #wrap { position:relative; transform-origin:0 0; }
+  #wrap img { display:block; }
+  svg { position:absolute; inset:0; }
+  polygon { fill-opacity:.28; stroke-width:1.2; cursor:pointer; }
+  polygon:hover, polygon.hl { fill-opacity:.65; stroke-width:2.5; }
+  text { font:bold 9px system-ui; fill:#c00; pointer-events:none; }
+  .zoom { position:fixed; right:14px; bottom:14px; display:flex; gap:6px; }
+  .zoom button { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); cursor:pointer; }
+  @media (max-width:700px) { body { flex-direction:column; } aside { width:auto; max-height:40vh; border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Sanction plan: extracted plots</h1>
+  <div class="mut">Plots drawn over the scan. Hover a plot to see how it was placed.</div>
+  <h2>Find a plot</h2>
+  <input type="text" id="q" placeholder="e.g. 742" inputmode="numeric">
+  <div id="info" class="mut">Hover or search a plot.</div>
+  <h2>How each plot was placed</h2>
+  <div id="legend"></div>
+  <label><input type="checkbox" id="labels" checked> Show my numbers (red)</label>
+  <h2>Areas</h2>
+  <label><input type="checkbox" checked data-l="road"><span class="sw" style="background:#222"></span>Roads (18 m darkest, 12 m, 9 m)</label>
+  <label><input type="checkbox" checked data-l="park"><span class="sw" style="background:#2e8b3a"></span>Parks</label>
+  <label><input type="checkbox" checked data-l="civic"><span class="sw" style="background:#c9a227"></span>Civic amenities</label>
+  <label><input type="checkbox" checked data-l="clubhouse"><span class="sw" style="background:#7b3fa0"></span>Club house</label>
+  <h2>Not yet placed</h2>
+  <div id="missing" class="mut"></div>
+</aside>
+<main>
+  <div id="wrap"><img id="scan" src="scan.jpg" alt="Sanction plan scan"><svg id="svg"></svg></div>
+  <div class="zoom"><button id="zo">−</button><button id="zi">+</button></div>
+</main>
+<script src="review-data.js"></script>
+<script>
+const R = window.REVIEW, svg = document.getElementById('svg');
+const HOW = {
+  'cell': ['#1a9850', 'Own drawn cell, number read'],
+  'cell A': ['#1a9850', 'Odd plot: drawn cell, number read'],
+  'cell B': ['#66bd63', 'Odd plot: cell closed by a dashed line'],
+  'between': ['#2b83ba', 'Between two placed plots, gap fits exactly'],
+  'between (row end)': ['#2b83ba', 'Row end, between placed plots'],
+  'extended (number read)': ['#7b3294', 'Row extended, number read there'],
+  'extended (cell)': ['#c2a5cf', 'Row extended, matching empty cell'],
+  'hand traced': ['#984ea3', 'Traced by hand from the scan'],
+  'stacked': ['#66a61e', 'Rectangle stacked on its neighbour'],
+  'row hint': ['#e7298a', 'Row you confirmed (reviewed)'],
+  'mirrors back row': ['#abd9e9', 'Row continued: plot behind it is placed'],
+  'seeded from numbers': ['#fdae61', 'Seeded from two numbers'],
+  'approx rectangle': ['#d7191c', 'Odd plot: approximate rectangle'],
+};
+svg.setAttribute('viewBox', `0 0 ${R.w} ${R.h}`); svg.setAttribute('width', R.w); svg.setAttribute('height', R.h);
+const info = document.getElementById('info'), byN = new Map(), counts = {};
+const AREA_COL = { road: '#555', park: '#2e8b3a', civic: '#c9a227', clubhouse: '#7b3fa0' };
+const areaG = document.createElementNS('http://www.w3.org/2000/svg', 'g'); svg.appendChild(areaG);
+for (const a of (R.areas || [])) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const ring = r => 'M' + r.map(q => q.join(',')).join('L') + 'Z';
+  path.setAttribute('d', ring(a.poly) + (a.holes || []).map(ring).join(''));
+  const rc = a.layer === 'road' ? (a.width >= 18 ? '#222' : a.width >= 12 ? '#555' : '#888') : null;
+  path.setAttribute('fill-rule', 'evenodd'); path.setAttribute('fill', rc || AREA_COL[a.layer] || '#999');
+  path.setAttribute('fill-opacity', a.layer === 'road' ? 0.5 : 0.35); path.setAttribute('stroke', rc || AREA_COL[a.layer] || '#999');
+  path.setAttribute('stroke-width', 1); path.dataset.layer = a.layer; path.style.cursor = 'pointer';
+  path.addEventListener('mouseenter', () => { info.className = ''; info.innerHTML = a.layer === 'road'
+    ? `<b>${a.name}</b><br>${a.width} m wide, ${a.length} m long${a.width >= 18 ? '<br>main road, with median' : ''}`
+    : `<b>${a.name}</b><br>${a.area.toLocaleString('en-IN')} sq m${a.traced ? ` printed, ${a.traced.toLocaleString('en-IN')} traced` : ''}`; });
+  areaG.appendChild(path);
+  if (a.layer === 'road' && a.label_at) {
+    const tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    tx.setAttribute('x', a.label_at[0]); tx.setAttribute('y', a.label_at[1]); tx.setAttribute('text-anchor', 'middle');
+    tx.setAttribute('style', 'font:bold 11px system-ui;fill:#fff;stroke:#c62828;stroke-width:3;paint-order:stroke'); tx.textContent = a.rid;
+    tx.dataset.layer = 'road'; areaG.appendChild(tx);
+  }
+  if (a.layer === 'road' && a.width >= 18) {
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('x1', a.centre[0][0]); ln.setAttribute('y1', a.centre[0][1]); ln.setAttribute('x2', a.centre[1][0]); ln.setAttribute('y2', a.centre[1][1]);
+    ln.setAttribute('stroke', '#f2efe2'); ln.setAttribute('stroke-width', 1.2); ln.dataset.layer = 'road'; ln.style.pointerEvents = 'none';
+    areaG.appendChild(ln);
+  }
+}
+const NS = 'http://www.w3.org/2000/svg';
+for (const p of R.plots) {
+  counts[p.how] = (counts[p.how] || 0) + 1;
+  if (!p.poly) continue;
+  const [col] = HOW[p.how] || ['#999'];
+  const g = document.createElementNS(NS, 'polygon');
+  g.setAttribute('points', p.poly.map(q => q.join(',')).join(' '));
+  g.setAttribute('fill', col); g.setAttribute('stroke', col); g.dataset.how = p.how;
+  g.addEventListener('mouseenter', () => show(p));
+  svg.appendChild(g); byN.set(p.n, g);
+  const cx = p.poly.reduce((s, q) => s + q[0], 0) / p.poly.length, cy = p.poly.reduce((s, q) => s + q[1], 0) / p.poly.length;
+  const t = document.createElementNS(NS, 'text'); t.setAttribute('x', cx - 8); t.setAttribute('y', cy - 5); t.textContent = p.n; t.classList.add('lbl');
+  svg.appendChild(t);
+}
+function show(p) {
+  info.className = '';
+  info.innerHTML = `<b>Plot ${p.n}</b> · ${p.cls}<br>${p.area.toLocaleString('en-IN')} sq m<br><span class="mut">${(HOW[p.how] || [0, p.how])[1]}${p.outline ? '<br>Outline: ' + p.outline : ''}</span>`;
+}
+const leg = document.getElementById('legend');
+for (const [k, [col, name]] of Object.entries(HOW)) {
+  const l = document.createElement('label');
+  l.innerHTML = `<input type="checkbox" checked><span class="sw" style="background:${col}"></span>${name}<span class="n">${counts[k] || 0}</span>`;
+  l.querySelector('input').addEventListener('change', e => svg.querySelectorAll(`polygon[data-how="${k}"]`).forEach(g => g.style.display = e.target.checked ? '' : 'none'));
+  leg.appendChild(l);
+}
+const miss = R.plots.filter(p => !p.poly);
+document.getElementById('missing').textContent = `${miss.length}: ` + miss.map(p => p.n).join(', ');
+document.getElementById('labels').addEventListener('change', e => svg.querySelectorAll('.lbl').forEach(t => t.style.display = e.target.checked ? '' : 'none'));
+let z = 1; const wrap = document.getElementById('wrap');
+const setZ = v => { z = Math.min(4, Math.max(0.3, v)); wrap.style.transform = `scale(${z})`; wrap.style.width = R.w * z + 'px'; wrap.style.height = R.h * z + 'px'; };
+document.getElementById('zi').onclick = () => setZ(z * 1.4); document.getElementById('zo').onclick = () => setZ(z / 1.4);
+document.getElementById('q').addEventListener('input', e => {
+  svg.querySelectorAll('.hl').forEach(g => g.classList.remove('hl'));
+  const p = R.plots.find(p => String(p.n) === e.target.value.trim()); if (!p) return;
+  show(p); const g = byN.get(p.n);
+  if (g) { g.classList.add('hl'); const b = g.getBBox(); document.querySelector('main').scrollTo({ left: b.x * z - 300, top: b.y * z - 300, behavior: 'smooth' }); }
+});
+document.querySelectorAll('input[data-l]').forEach(c => c.addEventListener('change', e => svg.querySelectorAll(`[data-layer="${c.dataset.l}"]`).forEach(p => p.style.display = c.checked ? '' : 'none')));
+setZ(1);
+</script>
+</body>
+</html>

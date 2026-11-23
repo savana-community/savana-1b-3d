@@ -8,3 +8,7 @@ tools/vectorize.py
 tools/segment_1b.py
 .DS_Store
 __pycache__/
+# sanction-plan pipeline: debug renders and regenerable intermediates
+data/sanction-2021/logs/
+data/sanction-2021/*.npz
+data/sanction-2021/blacklist.json

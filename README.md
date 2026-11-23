@@ -5,7 +5,20 @@ published master plan. It runs entirely in the browser, with no build step.
 
 **View it:** open `index.html` in a browser (it needs internet access for the Three.js CDN), or use the hosted version at https://savana-community.github.io/savana-1b-3d/
 
-## What's in the model
+## New: full-site model from the 2021 sanction plan
+A second model, built from the revised sanction plan (BIAAPA, 2021, drawn at 1:1750). Unlike the brochure,
+it is drawn to scale and covers the whole site: all 1,404 plots, numbered and sized from the plan's own tables,
+plus the roads, parks, civic-amenity areas and club house.
+
+- **3D view:** https://savana-community.github.io/savana-1b-3d/data/sanction-2021/viewer/
+- **Check it against the plan:** https://savana-community.github.io/savana-1b-3d/data/sanction-2021/review/
+  (plots, roads and parks drawn over the scanned sanction plan; hover for details)
+
+Roads are numbered R1, R2, ... so corrections can name them ("R26 continues to the left", "R44 and R69 are one
+road"). Plot and road corrections live in `data/sanction-2021/row-hints.json`; `tools/sanction_run.sh` rebuilds
+everything in about 15 seconds (`tools/sanction_*.py` hold the pipeline).
+
+## What's in the model (Phase 1B, from the brochure)
 - About 1,230 plots with straight-edged boundaries traced from the drawing's divider lines, plot numbers
   (read by OCR; grey italic = inferred), and measured sizes. Colouring by size class is an optional overlay.
 - Red laterite soil with overgrown weeds on empty plots, lush parks, asphalt roads, slim paver footpaths,
